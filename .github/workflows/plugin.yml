@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Super-Safe
+name: Dify-Plugin-ARM-Native-Packer
 
 on:
   workflow_dispatch:
@@ -7,63 +7,36 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Dify Source
-        uses: actions/checkout@v4
-        with:
-          repository: 'langgenius/dify'
-          ref: 'main'
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Prepare and Build
+      - name: Build from API Base
         run: |
-          # 1. 创建一个绝对干净的构建目录
-          mkdir -p build_tmp
+          # 1. 直接编写 Dockerfile，以官方 API 镜像为底座
+          # 这样能保证容器内包含所有的 core/plugin 源码和依赖
+          cat <<EOF > Dockerfile.native
+          FROM langgenius/dify-api:1.11.4
           
-          # 2. 检查 api/requirements.txt 是否真的存在并拷贝
-          if [ -f "api/requirements.txt" ]; then
-            cp api/requirements.txt build_tmp/
-            cp -r api/. build_tmp/
-          else
-            echo "错误：源码中找不到 api/requirements.txt"
-            find . -name "requirements.txt"
-            exit 1
-          fi
-          
-          # 3. 在这个干净的目录里写 Dockerfile
-          cd build_tmp
-          cat <<EOF > Dockerfile.plugin
-          FROM python:3.12-slim-bookworm
-          
-          RUN apt-get update && apt-get install -y --no-install-recommends \
-              curl libmagic1 libffi-dev libssl-dev gcc build-essential \
-              && rm -rf /var/lib/apt/lists/*
-          
-          WORKDIR /app
-          
-          # 直接复制当前目录下的所有文件 (包括刚才拷过来的 requirements.txt)
-          COPY . .
-          
-          RUN pip install --no-cache-dir -r requirements.txt
-          
+          # 暴露插件通信端口
           EXPOSE 5002
-          CMD ["python", "-m", "core.plugin.daemon"]
-          EOF
           
-          # 4. 执行构建，指定上下文为这个干净的临时目录
+          # 关键：指定运行插件守护进程
+          # 这与 Dify 官方定义 plugin-daemon 的行为完全一致
+          ENTRYPOINT ["python", "-m", "core.plugin.daemon"]
+          EOF
+
+          # 2. 构建 ARM64 版本的插件镜像
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
-            --output type=docker,dest=../plugin_daemon_arm64.tar \
-            -f Dockerfile.plugin .
+            --output type=docker,dest=dify_plugin_native_arm64.tar \
+            -f Dockerfile.native .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dify-plugin-daemon-arm64
-          path: plugin_daemon_arm64.tar
-          retention-days: 1
+          name: dify-plugin-native-arm64
+          path: dify_plugin_native_arm64.tar
