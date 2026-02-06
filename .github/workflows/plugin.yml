@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Source-Build-Fixed
+name: Dify-Plugin-ARM64-Final-Success
 
 on:
   workflow_dispatch:
@@ -21,26 +21,33 @@ jobs:
 
       - name: Build Official Plugin Daemon ARM64
         run: |
-          # 1. 现场编写 Dockerfile (基于 API 源码环境)
+          # 1. 直接在 api 目录下生成 Dockerfile，这样上下文最简单
+          cd api
           cat <<EOF > Dockerfile.plugin
           FROM python:3.12-slim-bookworm
+          
           RUN apt-get update && apt-get install -y --no-install-recommends \
               curl libmagic1 libffi-dev libssl-dev gcc build-essential \
               && rm -rf /var/lib/apt/lists/*
+          
           WORKDIR /app
-          COPY api/requirements.txt .
+          
+          # 因为已经在 api 目录里了，直接 COPY requirements.txt 即可
+          COPY requirements.txt .
           RUN pip install --no-cache-dir -r requirements.txt
-          COPY api/ .
+          
+          # 复制当前 api 目录下的所有代码
+          COPY . .
+          
           EXPOSE 5002
           CMD ["python", "-m", "core.plugin.daemon"]
           EOF
           
-          # 2. 执行构建并导出为 tar 包
-          # 使用 --output 类型为 docker 来兼容老版本 buildx
+          # 2. 执行构建，将上下文设为当前目录 (.) 也就是 api 目录
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
-            --output type=docker,dest=plugin_daemon_arm64.tar \
+            --output type=docker,dest=../plugin_daemon_arm64.tar \
             -f Dockerfile.plugin .
 
       - name: Upload Artifact
