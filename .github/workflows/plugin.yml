@@ -1,7 +1,7 @@
-name: Dify-Plugin-ARM64-Builder-01
+name: Dify-Plugin-ARM64-Builder-V2
 
 on:
-  workflow_dispatch: # 手动点击按钮触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -11,7 +11,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'langgenius/dify'
-          # 确保这里的版本号与你离线环境的代码版本一致
+          # 如果你的 Dify 是 1.11.4，这里尝试匹配对应的标签
+          # 如果报错，请改回 'main'
           ref: 'main' 
 
       - name: Set up QEMU
@@ -20,15 +21,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Plugin Daemon ARM64
+      - name: Find and Build Plugin Daemon
         run: |
-          # 进入插件守护进程源码目录
-          cd docker/volumes/plugin_daemon
-          # 直接现场构建 ARM64 镜像
+          # 自动寻找包含 plugin-daemon 相关 Dockerfile 的目录
+          # 排除 volumes 映射目录，寻找真正的源码构建目录
+          TARGET_DIR=$(find . -name "Dockerfile" | grep "plugin_daemon" | head -n 1 | xargs dirname)
+          
+          if [ -z "$TARGET_DIR" ]; then
+            echo "错误：找不到 plugin_daemon 的构建目录！"
+            ls -R # 打印目录结构方便排查
+            exit 1
+          fi
+          
+          echo "找到构建目录: $TARGET_DIR"
+          
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
-            --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar .
+            --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar \
+            $TARGET_DIR
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
