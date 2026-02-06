@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Builder-V2
+name: Dify-Plugin-ARM64-Builder-Final
 
 on:
   workflow_dispatch:
@@ -11,9 +11,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'langgenius/dify'
-          # 如果你的 Dify 是 1.11.4，这里尝试匹配对应的标签
-          # 如果报错，请改回 'main'
-          ref: 'main' 
+          ref: 'main' # 或者指定为 'v0.12.1' 等具体版本
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -21,25 +19,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Find and Build Plugin Daemon
+      - name: Build Plugin Daemon ARM64
         run: |
-          # 自动寻找包含 plugin-daemon 相关 Dockerfile 的目录
-          # 排除 volumes 映射目录，寻找真正的源码构建目录
-          TARGET_DIR=$(find . -name "Dockerfile" | grep "plugin_daemon" | head -n 1 | xargs dirname)
-          
-          if [ -z "$TARGET_DIR" ]; then
-            echo "错误：找不到 plugin_daemon 的构建目录！"
-            ls -R # 打印目录结构方便排查
-            exit 1
+          # 尝试进入最新版本中插件守护进程的构建目录
+          # 路径 A: 较新版本的标准路径
+          # 路径 B: 1.11.x 系列的路径
+          if [ -d "docker/volumes/plugin_daemon" ]; then
+            TARGET="docker/volumes/plugin_daemon"
+          elif [ -d "api/core/plugin/host" ]; then
+            TARGET="api/core/plugin/host"
+          else
+            # 最后的保命手段：全盘搜索包含 plugin 关键字的 Dockerfile
+            TARGET=$(find . -name "Dockerfile" | grep "plugin" | head -n 1 | xargs dirname)
           fi
-          
-          echo "找到构建目录: $TARGET_DIR"
+
+          if [ -z "$TARGET" ]; then
+             echo "Fatal: Could not find plugin directory."
+             ls -R
+             exit 1
+          fi
+
+          echo "Target building directory is: $TARGET"
           
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
             --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar \
-            $TARGET_DIR
+            $TARGET
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
