@@ -1,0 +1,26 @@
+name: Dify-Plugin-ARM64-Packer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Pull Plugin Image
+        run: |
+          # 拉取官方存在的版本，指定 ARM64 架构
+          docker pull --platform linux/arm64 langgenius/dify-plugin-daemon:0.0.1
+
+      - name: Save to Tar
+        run: |
+          docker save -o dify_plugin_arm64.tar langgenius/dify-plugin-daemon:0.0.1
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dify-plugin-arm64
+          path: dify_plugin_arm64.tar
