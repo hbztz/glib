@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Final-Success
+name: Dify-Plugin-ARM64-Source-Build
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'langgenius/dify'
-          ref: 'main' 
+          ref: 'main'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -19,32 +19,37 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Plugin Daemon ARM64
+      - name: Build Official Plugin Daemon ARM64
         run: |
-          # 针对 1.11.x / 1.12.x 版本，插件守护进程的 Dockerfile 路径通常是这里：
-          # 我们先暴力检查两个最可能的路径
-          if [ -f "api/core/plugin/host/Dockerfile" ]; then
-            TARGET_DIR="api/core/plugin/host"
-          elif [ -f "docker/volumes/plugin_daemon/Dockerfile" ]; then
-            TARGET_DIR="docker/volumes/plugin_daemon"
-          else
-            # 如果还找不到，用最原始的 find 遍历所有子目录
-            TARGET_DIR=$(find . -path "*/plugin*/Dockerfile" | head -n 1 | xargs dirname)
-          fi
-
-          if [ -z "$TARGET_DIR" ] || [ "$TARGET_DIR" = "." ]; then
-            echo "错误：依然找不到 Dockerfile，深度扫描目录..."
-            find . -name "Dockerfile"
-            exit 1
-          fi
-
-          echo "确定的构建目录为: $TARGET_DIR"
+          # 1. 既然 find 搜不到，我们直接在 api 目录下寻找对应的 Dockerfile
+          # Dify 1.11+ 的插件逻辑通常共用 API 的基础环境
           
+          cat <<EOF > api/Dockerfile.plugin
+          FROM python:3.12-slim-bookworm
+          # 安装系统依赖
+          RUN apt-get update && apt-get install -y --no-install-recommends \\
+              curl libmagic1 libffi-dev libssl-dev gcc build-essential \\
+              && rm -rf /var/lib/apt/lists/*
+          
+          WORKDIR /app
+          # 复制 API 目录下的所有依赖描述文件
+          COPY api/requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+          
+          # 复制核心代码
+          COPY api/ .
+          
+          EXPOSE 5002
+          # 关键：运行 Dify 插件守护进程
+          CMD ["python", "-m", "core.plugin.daemon"]
+          EOF
+          
+          # 2. 执行构建 (使用仓库根目录作为 Context)
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
             --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar \
-            "$TARGET_DIR"
+            -f api/Dockerfile.plugin .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
