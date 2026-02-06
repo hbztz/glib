@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Source-Build
+name: Dify-Plugin-ARM64-Source-Build-Fixed
 
 on:
   workflow_dispatch:
@@ -21,39 +21,31 @@ jobs:
 
       - name: Build Official Plugin Daemon ARM64
         run: |
-          # 1. 既然 find 搜不到，我们直接在 api 目录下寻找对应的 Dockerfile
-          # Dify 1.11+ 的插件逻辑通常共用 API 的基础环境
-          
-          cat <<EOF > api/Dockerfile.plugin
+          # 1. 现场编写 Dockerfile (基于 API 源码环境)
+          cat <<EOF > Dockerfile.plugin
           FROM python:3.12-slim-bookworm
-          # 安装系统依赖
-          RUN apt-get update && apt-get install -y --no-install-recommends \\
-              curl libmagic1 libffi-dev libssl-dev gcc build-essential \\
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              curl libmagic1 libffi-dev libssl-dev gcc build-essential \
               && rm -rf /var/lib/apt/lists/*
-          
           WORKDIR /app
-          # 复制 API 目录下的所有依赖描述文件
           COPY api/requirements.txt .
           RUN pip install --no-cache-dir -r requirements.txt
-          
-          # 复制核心代码
           COPY api/ .
-          
           EXPOSE 5002
-          # 关键：运行 Dify 插件守护进程
           CMD ["python", "-m", "core.plugin.daemon"]
           EOF
           
-          # 2. 执行构建 (使用仓库根目录作为 Context)
+          # 2. 执行构建并导出为 tar 包
+          # 使用 --output 类型为 docker 来兼容老版本 buildx
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
-            --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar \
-            -f api/Dockerfile.plugin .
+            --output type=docker,dest=plugin_daemon_arm64.tar \
+            -f Dockerfile.plugin .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: dify-plugin-daemon-arm64
-          path: /tmp/plugin_daemon_arm64.tar
+          path: plugin_daemon_arm64.tar
           retention-days: 1
