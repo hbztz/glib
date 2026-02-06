@@ -1,26 +1,38 @@
-name: Dify-Plugin-ARM64-Packer
+name: Dify-Plugin-ARM64-Builder-01
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 手动点击按钮触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Dify Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'langgenius/dify'
+          # 确保这里的版本号与你离线环境的代码版本一致
+          ref: 'main' 
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Pull Plugin Image
-        run: |
-          # 拉取官方存在的版本，指定 ARM64 架构
-          docker pull --platform linux/arm64 langgenius/dify-plugin-daemon:0.0.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Save to Tar
+      - name: Build Plugin Daemon ARM64
         run: |
-          docker save -o dify_plugin_arm64.tar langgenius/dify-plugin-daemon:0.0.1
+          # 进入插件守护进程源码目录
+          cd docker/volumes/plugin_daemon
+          # 直接现场构建 ARM64 镜像
+          docker buildx build \
+            --platform linux/arm64 \
+            -t langgenius/dify-plugin-daemon:0.5.2-local \
+            --outputs type=docker,dest=/tmp/plugin_daemon_arm64.tar .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dify-plugin-arm64
-          path: dify_plugin_arm64.tar
+          name: dify-plugin-daemon-arm64
+          path: /tmp/plugin_daemon_arm64.tar
+          retention-days: 1
