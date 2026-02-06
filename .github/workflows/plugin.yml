@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Builder-SuperFinal
+name: Dify-Plugin-ARM64-Final-Success
 
 on:
   workflow_dispatch:
@@ -11,7 +11,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'langgenius/dify'
-          # 如果你的离线包是 1.11.4，这里可以显式指定标签
           ref: 'main' 
 
       - name: Set up QEMU
@@ -20,27 +19,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Locate and Build Plugin Daemon
+      - name: Build Plugin Daemon ARM64
         run: |
-          # 1. 精准寻找包含 "plugin" 和 "daemon" 逻辑的 Dockerfile
-          # 我们不再用特定的路径，而是直接搜 Dockerfile 内容或文件名
-          echo "正在全仓库搜索插件构建文件..."
-          
-          # 尝试定位 Dockerfile
-          DOCKERFILE_PATH=$(find . -name "Dockerfile" | grep -E "plugin_daemon|plugin" | head -n 1)
-          
-          if [ -z "$DOCKERFILE_PATH" ]; then
-            echo "未找到匹配的 Dockerfile，打印根目录结构："
-            ls -F
+          # 针对 1.11.x / 1.12.x 版本，插件守护进程的 Dockerfile 路径通常是这里：
+          # 我们先暴力检查两个最可能的路径
+          if [ -f "api/core/plugin/host/Dockerfile" ]; then
+            TARGET_DIR="api/core/plugin/host"
+          elif [ -f "docker/volumes/plugin_daemon/Dockerfile" ]; then
+            TARGET_DIR="docker/volumes/plugin_daemon"
+          else
+            # 如果还找不到，用最原始的 find 遍历所有子目录
+            TARGET_DIR=$(find . -path "*/plugin*/Dockerfile" | head -n 1 | xargs dirname)
+          fi
+
+          if [ -z "$TARGET_DIR" ] || [ "$TARGET_DIR" = "." ]; then
+            echo "错误：依然找不到 Dockerfile，深度扫描目录..."
+            find . -name "Dockerfile"
             exit 1
           fi
-          
-          TARGET_DIR=$(dirname "$DOCKERFILE_PATH")
-          echo "定位成功！构建目录为: $TARGET_DIR"
-          echo "Dockerfile 内容预览:"
-          head -n 5 "$DOCKERFILE_PATH"
 
-          # 2. 执行 ARM64 构建
+          echo "确定的构建目录为: $TARGET_DIR"
+          
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
