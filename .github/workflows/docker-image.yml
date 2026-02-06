@@ -24,7 +24,7 @@ jobs:
           docker pull --platform linux/arm64 langgenius/dify-web:1.11.4
           docker pull --platform linux/arm64 langgenius/dify-sandbox:0.2.12
           # 针对 plugin-daemon，如果 0.0.1 找不到，尝试使用 latest
-          docker pull --platform linux/arm64 langgenius/dify-plugin-daemon:latest
+          #docker pull --platform linux/arm64 langgenius/dify-plugin-daemon:latest
           
           # 基础组件
           docker pull --platform linux/arm64 postgres:15-alpine
