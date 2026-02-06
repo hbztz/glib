@@ -1,4 +1,4 @@
-name: Dify-Plugin-ARM64-Final-Success
+name: Dify-Plugin-ARM64-Super-Safe
 
 on:
   workflow_dispatch:
@@ -19,10 +19,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Official Plugin Daemon ARM64
+      - name: Prepare and Build
         run: |
-          # 1. 直接在 api 目录下生成 Dockerfile，这样上下文最简单
-          cd api
+          # 1. 创建一个绝对干净的构建目录
+          mkdir -p build_tmp
+          
+          # 2. 检查 api/requirements.txt 是否真的存在并拷贝
+          if [ -f "api/requirements.txt" ]; then
+            cp api/requirements.txt build_tmp/
+            cp -r api/. build_tmp/
+          else
+            echo "错误：源码中找不到 api/requirements.txt"
+            find . -name "requirements.txt"
+            exit 1
+          fi
+          
+          # 3. 在这个干净的目录里写 Dockerfile
+          cd build_tmp
           cat <<EOF > Dockerfile.plugin
           FROM python:3.12-slim-bookworm
           
@@ -32,18 +45,16 @@ jobs:
           
           WORKDIR /app
           
-          # 因为已经在 api 目录里了，直接 COPY requirements.txt 即可
-          COPY requirements.txt .
-          RUN pip install --no-cache-dir -r requirements.txt
-          
-          # 复制当前 api 目录下的所有代码
+          # 直接复制当前目录下的所有文件 (包括刚才拷过来的 requirements.txt)
           COPY . .
+          
+          RUN pip install --no-cache-dir -r requirements.txt
           
           EXPOSE 5002
           CMD ["python", "-m", "core.plugin.daemon"]
           EOF
           
-          # 2. 执行构建，将上下文设为当前目录 (.) 也就是 api 目录
+          # 4. 执行构建，指定上下文为这个干净的临时目录
           docker buildx build \
             --platform linux/arm64 \
             -t langgenius/dify-plugin-daemon:0.5.2-local \
